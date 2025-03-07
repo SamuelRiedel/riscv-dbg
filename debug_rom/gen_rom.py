@@ -97,7 +97,7 @@ def read_bin():
         rom = list(map(''.join, zip(rom[::2], rom[1::2])))
 
     # align to 64 bit
-    align = (int((len(rom) + 7) / 8 )) * 8;
+    align = (int((len(list(rom)) + 7) / 8 )) * 8;
 
     for i in range(len(rom), align):
         rom.append("00")
