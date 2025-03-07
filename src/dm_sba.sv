@@ -21,6 +21,7 @@ module dm_sba #(
 ) (
   input  logic                   clk_i,       // Clock
   input  logic                   rst_ni,
+/* verilator lint_off UNUSEDSIGNAL */
   input  logic                   dmactive_i,  // synchronous reset active low
 
   output logic                   master_req_o,
