@@ -15,7 +15,7 @@
  * Description: Debug-module package, contains common system definitions.
  *
  */
-
+/* verilator lint_off DECLFILENAME */
 package dm;
   localparam logic [3:0] DbgVersion013 = 4'h2;
   // size of program buffer in junks of 32-bit words
@@ -316,14 +316,20 @@ package dm;
     // Debug CSR
     CSR_DCSR           = 12'h7b0,
     CSR_DPC            = 12'h7b1,
-    CSR_DSCRATCH0      = 12'h7b2, // optional
-    CSR_DSCRATCH1      = 12'h7b3, // optional
+//    CSR_DSCRATCH0      = 12'h7b2, // optional
+//    CSR_DSCRATCH1      = 12'h7b3, // optional
 
     // Counters and Timers
     CSR_CYCLE          = 12'hC00,
     CSR_TIME           = 12'hC01,
     CSR_INSTRET        = 12'hC02
   } csr_reg_t;
+
+  // Special CSRs
+  typedef enum logic [4:0] {
+    CSR_DSCRATCH0    = 5'h19,
+    CSR_DSCRATCH1    = 5'h1a
+  } spec_csr_e;
 
   // SBA state
   typedef enum logic [2:0] {
@@ -335,6 +341,7 @@ package dm;
   } sba_state_e;
 
   // Instruction Generation Helpers
+/* verilator lint_off UNUSEDSIGNAL */
   function automatic logic [31:0] jal (logic [4:0]  rd,
                                        logic [20:0] imm);
     // OpCode Jal
@@ -405,6 +412,18 @@ package dm;
                                                logic [11:0] offset);
     // OpCode Store
     return {offset[11:5], src, base, size, offset[4:0], 7'b01_001_11};
+  endfunction
+
+  function automatic logic [31:0] cspecialw (spec_csr_e csr,
+                                        logic [4:0] rs1);
+    // CSpecialRW cdest, scsr, csrc, OpCode System
+    return {7'h01, csr, rs1, 3'h0, 5'h0, 7'h5b};
+  endfunction
+
+  function automatic logic [31:0] cspecialr (spec_csr_e csr,
+                                        logic [4:0] dest);
+    // CSpecialRW cdest, scsr, csrc,  OpCode System
+    return {7'h01, csr, 5'h0, 3'h0, dest, 7'h5b};
   endfunction
 
   function automatic logic [31:0] csrw (csr_reg_t   csr,

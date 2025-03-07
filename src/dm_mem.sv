@@ -24,6 +24,7 @@ module dm_mem #(
 ) (
   input  logic                             clk_i,       // Clock
   input  logic                             rst_ni,      // debug module reset
+  input  logic                             ndmreset_i,
 
   output logic [NrHarts-1:0]               debug_req_o,
   input  logic [19:0]                      hartsel_i,
@@ -111,9 +112,9 @@ module dm_mem #(
   assign resumereq_wdata_aligned = NrHartsAligned'(resumereq_i);
 
   assign halted_q_aligned        = NrHartsAligned'(halted_q);
-  assign halted_d                = NrHarts'(halted_d_aligned);
+  assign halted_d                = ndmreset_i ? '0 : NrHarts'(halted_d_aligned);
   assign resuming_q_aligned      = NrHartsAligned'(resuming_q);
-  assign resuming_d              = NrHarts'(resuming_d_aligned);
+  assign resuming_d              = ndmreset_i ? '0 : NrHarts'(resuming_d_aligned);
 
   // distinguish whether we need to forward data from the ROM or the FSM
   // latch the address for this
@@ -343,7 +344,7 @@ module dm_mem #(
     abstract_cmd[2][63:32] = dm::nop();
     abstract_cmd[3][31:0]  = dm::nop();
     abstract_cmd[3][63:32] = dm::nop();
-    abstract_cmd[4][31:0]  = HasSndScratch ? dm::csrr(dm::CSR_DSCRATCH1, 5'd10) : dm::nop();
+    abstract_cmd[4][31:0]  = HasSndScratch ? dm::cspecialr(dm::CSR_DSCRATCH1, 5'd10) : dm::nop();
     abstract_cmd[4][63:32] = dm::ebreak();
     abstract_cmd[7:5]      = '0;
 
@@ -355,7 +356,7 @@ module dm_mem #(
       dm::AccessRegister: begin
         if (32'(ac_ar.aarsize) < MaxAar && ac_ar.transfer && ac_ar.write) begin
           // store a0 in dscratch1
-          abstract_cmd[0][31:0] = HasSndScratch ? dm::csrw(dm::CSR_DSCRATCH1, 5'd10) : dm::nop();
+          abstract_cmd[0][31:0] = HasSndScratch ? dm::cspecialw(dm::CSR_DSCRATCH1, 5'd10) : dm::nop();
           // this range is reserved
           if (ac_ar.regno[15:14] != '0) begin
             abstract_cmd[0][31:0] = dm::ebreak(); // we leave asap
@@ -365,13 +366,13 @@ module dm_mem #(
           end else if (HasSndScratch && ac_ar.regno[12] && (!ac_ar.regno[5]) &&
                       (ac_ar.regno[4:0] == 5'd10)) begin
             // store s0 in dscratch
-            abstract_cmd[2][31:0]  = dm::csrw(dm::CSR_DSCRATCH0, 5'd8);
+            abstract_cmd[2][31:0]  = dm::cspecialw(dm::CSR_DSCRATCH0, 5'd8);
             // load from data register
             abstract_cmd[2][63:32] = dm::load(ac_ar.aarsize, 5'd8, LoadBaseAddr, dm::DataAddr);
             // and store it in the corresponding CSR
-            abstract_cmd[3][31:0]  = dm::csrw(dm::CSR_DSCRATCH1, 5'd8);
+            abstract_cmd[3][31:0]  = dm::cspecialw(dm::CSR_DSCRATCH1, 5'd8);
             // restore s0 again from dscratch
-            abstract_cmd[3][63:32] = dm::csrr(dm::CSR_DSCRATCH0, 5'd8);
+            abstract_cmd[3][63:32] = dm::cspecialr(dm::CSR_DSCRATCH0, 5'd8);
           // GPR/FPR access
           end else if (ac_ar.regno[12]) begin
             // determine whether we want to access the floating point register or not
@@ -386,18 +387,18 @@ module dm_mem #(
           end else begin
             // data register to CSR
             // store s0 in dscratch
-            abstract_cmd[2][31:0]  = dm::csrw(dm::CSR_DSCRATCH0, 5'd8);
+            abstract_cmd[2][31:0]  = dm::cspecialw(dm::CSR_DSCRATCH0, 5'd8);
             // load from data register
             abstract_cmd[2][63:32] = dm::load(ac_ar.aarsize, 5'd8, LoadBaseAddr, dm::DataAddr);
             // and store it in the corresponding CSR
             abstract_cmd[3][31:0]  = dm::csrw(dm::csr_reg_t'(ac_ar.regno[11:0]), 5'd8);
             // restore s0 again from dscratch
-            abstract_cmd[3][63:32] = dm::csrr(dm::CSR_DSCRATCH0, 5'd8);
+            abstract_cmd[3][63:32] = dm::cspecialr(dm::CSR_DSCRATCH0, 5'd8);
           end
         end else if (32'(ac_ar.aarsize) < MaxAar && ac_ar.transfer && !ac_ar.write) begin
           // store a0 in dscratch1
           abstract_cmd[0][31:0]  = HasSndScratch ?
-                                   dm::csrw(dm::CSR_DSCRATCH1, LoadBaseAddr) :
+                                   dm::cspecialw(dm::CSR_DSCRATCH1, LoadBaseAddr) :
                                    dm::nop();
           // this range is reserved
           if (ac_ar.regno[15:14] != '0) begin
@@ -408,13 +409,13 @@ module dm_mem #(
           end else if (HasSndScratch && ac_ar.regno[12] && (!ac_ar.regno[5]) &&
                       (ac_ar.regno[4:0] == 5'd10)) begin
             // store s0 in dscratch
-            abstract_cmd[2][31:0]  = dm::csrw(dm::CSR_DSCRATCH0, 5'd8);
+            abstract_cmd[2][31:0]  = dm::cspecialw(dm::CSR_DSCRATCH0, 5'd8);
             // read value from CSR into s0
-            abstract_cmd[2][63:32] = dm::csrr(dm::CSR_DSCRATCH1, 5'd8);
+            abstract_cmd[2][63:32] = dm::cspecialr(dm::CSR_DSCRATCH1, 5'd8);
             // and store s0 into data section
             abstract_cmd[3][31:0]  = dm::store(ac_ar.aarsize, 5'd8, LoadBaseAddr, dm::DataAddr);
             // restore s0 again from dscratch
-            abstract_cmd[3][63:32] = dm::csrr(dm::CSR_DSCRATCH0, 5'd8);
+            abstract_cmd[3][63:32] = dm::cspecialr(dm::CSR_DSCRATCH0, 5'd8);
           // GPR/FPR access
           end else if (ac_ar.regno[12]) begin
             // determine whether we want to access the floating point register or not
@@ -429,13 +430,13 @@ module dm_mem #(
           end else begin
             // CSR register to data
             // store s0 in dscratch
-            abstract_cmd[2][31:0]  = dm::csrw(dm::CSR_DSCRATCH0, 5'd8);
+            abstract_cmd[2][31:0]  = dm::cspecialw(dm::CSR_DSCRATCH0, 5'd8);
             // read value from CSR into s0
             abstract_cmd[2][63:32] = dm::csrr(dm::csr_reg_t'(ac_ar.regno[11:0]), 5'd8);
             // and store s0 into data section
             abstract_cmd[3][31:0]  = dm::store(ac_ar.aarsize, 5'd8, LoadBaseAddr, dm::DataAddr);
             // restore s0 again from dscratch
-            abstract_cmd[3][63:32] = dm::csrr(dm::CSR_DSCRATCH0, 5'd8);
+            abstract_cmd[3][63:32] = dm::cspecialr(dm::CSR_DSCRATCH0, 5'd8);
           end
         end else if (32'(ac_ar.aarsize) >= MaxAar || ac_ar.aarpostincrement == 1'b1) begin
           // this should happend when e.g. ac_ar.aarsize >= MaxAar
