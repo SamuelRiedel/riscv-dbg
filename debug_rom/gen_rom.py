@@ -88,12 +88,12 @@ $content
 def read_bin():
 
     with open(filename + ".img", 'rb') as f:
-        rom = binascii.hexlify(f.read())
-        rom = map(''.join, zip(rom[::2], rom[1::2]))
+        rom = binascii.hexlify(f.read()).decode("utf-8")
+        rom = list(map(''.join, zip(rom[::2], rom[1::2])))
 
 
     # align to 64 bit
-    align = (int((len(rom) + 7) / 8 )) * 8;
+    align = (int((len(list(rom)) + 7) / 8 )) * 8;
 
     for i in range(len(rom), align):
         rom.append("00")
