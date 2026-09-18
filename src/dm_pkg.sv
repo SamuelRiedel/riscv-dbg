@@ -438,13 +438,17 @@ package dm;
   // CHERIoT equivalents of csrw/csrr for the Special Capability Registers. CSpecialRW moves a
   // whole capability, so unlike CSRRW/CSRRS these preserve the validity tag of the value they
   // save and restore. Encoding: funct7 = 7'h01, scr index, cs1, funct3 = 3'h0, cd, OpCode 7'h5b.
-  function automatic logic [31:0] cspecialw (spec_csr_e  csr,
+  // The SCR index is taken as a plain five bit value rather than as a spec_csr_e so that an
+  // abstract command can reach any Special Capability Register the debugger names, not only the
+  // two the enum happens to give names to. Passing a spec_csr_e still works and keeps the scratch
+  // register call sites self-documenting.
+  function automatic logic [31:0] cspecialw (logic [4:0] csr,
                                              logic [4:0] rs1);
     // CSpecialRW c0, scr, csrc -> discards the read value
     return {7'h01, csr, rs1, 3'h0, 5'h0, 7'h5b};
   endfunction
 
-  function automatic logic [31:0] cspecialr (spec_csr_e  csr,
+  function automatic logic [31:0] cspecialr (logic [4:0] csr,
                                              logic [4:0] dest);
     // CSpecialRW cdest, scr, c0 -> leaves the register unchanged
     return {7'h01, csr, 5'h0, 3'h0, dest, 7'h5b};
