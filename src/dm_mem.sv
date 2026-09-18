@@ -29,6 +29,9 @@ module dm_mem #(
   input  logic                             rst_ni,      // debug module reset
 
   output logic [NrHarts-1:0]               debug_req_o,
+  // High selects the CHERIoT park loop and abstract command encodings, low selects RV32I.
+  // See dm_top for why this is a live signal rather than a parameter.
+  input  logic                             cheriot_en_i,
   input  logic                             ndmreset_i,
   input  logic [19:0]                      hartsel_i,
   // from Ctrl and Status register
