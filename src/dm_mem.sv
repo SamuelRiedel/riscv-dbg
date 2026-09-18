@@ -593,17 +593,37 @@ module dm_mem #(
   // two registers per hart, hence we also need
   // two scratch registers.
   if (HasSndScratch) begin : gen_rom_snd_scratch
+    // Both park loops are held, and the one matching the current ISA is selected. They cannot
+    // share an image: the encodings differ throughout and the two are not even the same length.
+    // Both ROMs see every request and register the address internally, so selecting between their
+    // outputs costs nothing beyond the second ROM itself, around 1.2 kbit.
+    logic [63:0] rom_rdata_rv32, rom_rdata_cheriot;
+
     debug_rom i_debug_rom (
       .clk_i,
       .rst_ni,
       .req_i,
-      .addr_i  ( rom_addr  ),
-      .rdata_o ( rom_rdata )
+      .addr_i  ( rom_addr       ),
+      .rdata_o ( rom_rdata_rv32 )
     );
+
+    debug_rom_cheriot i_debug_rom_cheriot (
+      .clk_i,
+      .rst_ni,
+      .req_i,
+      .addr_i  ( rom_addr          ),
+      .rdata_o ( rom_rdata_cheriot )
+    );
+
+    assign rom_rdata = cheriot_en_i ? rom_rdata_cheriot : rom_rdata_rv32;
   end else begin : gen_rom_one_scratch
     // It uses the zero register (`x0`) as the base
     // for its loads. The zero register does not need to
     // be saved.
+    //
+    // There is no CHERIoT counterpart to this park loop, so this configuration is RV32I only and
+    // cheriot_en_i must be tied low. A CHERIoT integration has to place the debug module away from
+    // the zero page, which is the usual case and forces HasSndScratch above anyway.
     debug_rom_one_scratch i_debug_rom (
       .clk_i,
       .rst_ni,
