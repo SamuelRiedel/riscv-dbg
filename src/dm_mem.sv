@@ -22,7 +22,8 @@ module dm_mem #(
   parameter logic [NrHarts-1:0] SelectableHarts  = {NrHarts{1'b1}},
   parameter int unsigned        DmBaseAddress          = '0,
   // Maximum width supported by Access Register commands; must be 32 or 64.
-  parameter int unsigned        MaxRegisterAccessWidth = BusWidth
+  parameter int unsigned        MaxRegisterAccessWidth = BusWidth,
+  localparam int unsigned       BeWidth                = BusWidth/8
 ) (
   input  logic                             clk_i,       // Clock
   input  logic                             rst_ni,      // debug module reset
@@ -57,8 +58,9 @@ module dm_mem #(
   input  logic                             we_i,
   input  logic [BusWidth-1:0]              addr_i,
   input  logic [BusWidth-1:0]              wdata_i,
-  input  logic [BusWidth/8-1:0]            be_i,
-  output logic [BusWidth-1:0]              rdata_o
+  input  logic [BeWidth-1:0]               be_i,
+  output logic [BusWidth-1:0]              rdata_o,
+  output logic                             err_o
 );
   localparam int unsigned DbgAddressBits = 12;
   localparam int unsigned DataIndexWidth = $clog2(dm::DataCount);
@@ -289,9 +291,10 @@ module dm_mem #(
   // VCS Xprop cannot instrument case-inside range items (see PR #150).
   always_comb (* xprop_off *) begin : p_rw_logic
 
-    halted_d = halted_q;
-    rdata_d  = rdata_q;
-    rdata    = '0;
+    halted_d  = halted_q;
+    rdata_d   = rdata_q;
+    rdata     = '0;
+    fwd_rom_d = 1'b0;
 
     exception      = 1'b0;
     halted_aligned = '0;
@@ -377,6 +380,11 @@ module dm_mem #(
             end
             rdata_d = rdata;
           end
+          // Access has to be forwarded to the ROM. The ROM starts at the HaltAddress of the core
+          // e.g.: it immediately jumps to the ROM base address.
+          [RomBaseAddr:RomEndAddr]: begin
+            fwd_rom_d = 1'b1;
+          end
           default: ;
         endcase
       end
@@ -387,6 +395,54 @@ module dm_mem #(
       halted_d = '0;
     end
   end
+
+  // This flags subword writes that are shorter than the defined width of the register.
+  // Other writes are ignored.
+  function automatic logic gen_wr_err(logic we, logic [BeWidth-1:0] be, logic [BeWidth-1:0] mask);
+    return we && (|(~be & mask));
+  endfunction
+
+  // Relevant bus error cases
+  // - access unmapped address
+  // - write a CSR with unaligned address, e.g. `a_address[1:0] != 0`
+  // - write a CSR less than its width, e.g. when CSR is 2 bytes wide, only write 1 byte
+  // - write a RO (read-only) memory
+  localparam logic[BeWidth-1:0] FullRegMask = {BeWidth{1'b1}};
+  localparam logic[BeWidth-1:0] OneBitMask  = BeWidth'(1'b1);
+  localparam logic[BeWidth-1:0] HartSelMask = BeWidth'(2**HartSelLen-1);
+  logic err_d, err_q;
+  always_comb begin
+    err_d = 1'b0;
+    if (req_i) begin
+      unique case (addr_i[DbgAddressBits-1:0]) inside
+        WhereToAddr:                              err_d = gen_wr_err(we_i, be_i, FullRegMask);
+        HaltedAddr:                               err_d = gen_wr_err(we_i, be_i, HartSelMask);
+        GoingAddr:                                err_d = gen_wr_err(we_i, be_i, OneBitMask);
+        ResumingAddr:                             err_d = gen_wr_err(we_i, be_i, HartSelMask);
+        ExceptionAddr:                            err_d = gen_wr_err(we_i, be_i, OneBitMask);
+        [DataBaseAddr:DataEndAddr]:               err_d = gen_wr_err(we_i, be_i, FullRegMask);
+        [ProgBufBaseAddr:ProgBufEndAddr]:         err_d = gen_wr_err(we_i, be_i, FullRegMask);
+        [AbstractCmdBaseAddr:AbstractCmdEndAddr]: err_d = gen_wr_err(we_i, be_i, FullRegMask);
+        [FlagsBaseAddr:FlagsEndAddr]:             err_d = gen_wr_err(we_i, be_i, FullRegMask);
+        [RomBaseAddr:RomEndAddr]:                 err_d = we_i; // Writing ROM area always errors.
+        default: err_d = 1'b1;
+      endcase
+      // Unaligned accesses
+      if (addr_i[$clog2(BeWidth)-1:0] != '0) begin
+        err_d = 1'b1;
+      end
+    end
+  end
+
+  always_ff @(posedge clk_i or negedge rst_ni) begin : p_err_reg
+    if (!rst_ni) begin
+      err_q <= 1'b0;
+    end else begin
+      err_q <= err_d;
+    end
+  end
+
+  assign err_o = err_q;
 
   always_comb begin : p_abstract_cmd_rom
     // this abstract command is currently unsupported
@@ -553,10 +609,6 @@ module dm_mem #(
       .rdata_o ( rom_rdata )
     );
   end
-
-  // ROM starts at the HaltAddress of the core e.g.: it immediately jumps to
-  // the ROM base address
-  assign fwd_rom_d = logic'(addr_i[DbgAddressBits-1:0] >= dm::HaltAddress[DbgAddressBits-1:0]);
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_regs
     if (!rst_ni) begin
