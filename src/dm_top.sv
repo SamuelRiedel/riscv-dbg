@@ -36,6 +36,16 @@ module dm_top #(
   // register is a word address and not a byte address. This value is passed in as a static signal
   // so that it becomes possible to assign this value with chiplet tie-offs or straps, if needed.
   input  logic [31:0]           next_dm_addr_i,
+  // Selects the ISA the attached harts are currently executing, and with it the park loop and
+  // abstract command encodings this module presents. MuBi4True selects CHERIoT; every other
+  // value, including an invalid encoding, selects RV32I.
+  //
+  // This is a live signal rather than a parameter because the choice is made at runtime: the core
+  // starts in RV32I and firmware may switch it once. It is a multi-bit value so that the mode
+  // survives the trip from whatever produces it without a single upset or a floating net being
+  // able to present a CHERIoT park loop to an RV32I hart. Tie to MuBi4False for an RV32I-only
+  // integration.
+  input  prim_mubi_pkg::mubi4_t cheriot_enable_i,
   input  logic                  testmode_i,
   output logic                  ndmreset_o,  // non-debug module reset
   input  logic                  ndmreset_ack_i, // non-debug module reset acknowledgement pulse
@@ -213,6 +223,7 @@ module dm_top #(
     .clk_i,
     .rst_ni,
     .debug_req_o,
+    .cheriot_enable_i,
     .ndmreset_i              ( ndmreset              ),
     .hartsel_i               ( hartsel               ),
     .haltreq_i               ( haltreq               ),

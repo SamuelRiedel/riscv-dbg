@@ -27,6 +27,10 @@ module dm_mem #(
   input  logic                             rst_ni,      // debug module reset
 
   output logic [NrHarts-1:0]               debug_req_o,
+  // MuBi4True selects the CHERIoT park loop and abstract command encodings; every other value,
+  // including an invalid encoding, selects RV32I. See dm_top for why this is a live signal rather
+  // than a parameter.
+  input  prim_mubi_pkg::mubi4_t            cheriot_enable_i,
   input  logic                             ndmreset_i,
   input  logic [19:0]                      hartsel_i,
   // from Ctrl and Status register
@@ -97,6 +101,15 @@ module dm_mem #(
   logic [NrHarts-1:0] halted_d, halted_q;
   logic [NrHarts-1:0] resuming_d, resuming_q;
   logic               resume, go, going;
+
+  // Decode the CHERIoT mode indication once, here, and use the result everywhere below.
+  //
+  // The test is strict: only MuBi4True selects CHERIoT, so a floating, corrupted or partially
+  // driven input falls back to the RV32I park loop and encodings rather than to a CHERIoT image
+  // the attached hart cannot execute. That is the safe direction for a value that may cross a
+  // power or clock domain on its way here.
+  logic cheriot_en;
+  assign cheriot_en = (cheriot_enable_i == prim_mubi_pkg::MuBi4True);
 
   logic exception;
   logic unsupported_command;
