@@ -131,6 +131,8 @@ module dm_obi_top #(
     .clk_i                   ( clk_i                 ),
     .rst_ni                  ( rst_ni                ),
     .next_dm_addr_i          ( '0                    ), // Note exposed at the top yet.
+    // RV32I only; not exposed at the top yet.
+    .cheriot_enable_i        ( prim_mubi_pkg::MuBi4False ),
     .testmode_i              ( testmode_i            ),
     .ndmreset_o              ( ndmreset_o            ),
     .ndmreset_ack_i          ( ndmreset_o            ), // This is currently not exposed yet.
